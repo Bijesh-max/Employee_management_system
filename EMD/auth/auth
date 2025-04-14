@@ -1,1 +1,13 @@
+# auth/auth.py
+class Auth:
+    def __init__(self):
+        # Hardcoded users for now (username: password)
+        self.users = {
+            "admin": "admin123",
+            "user": "user123"
+        }
 
+    def validate_user(self, username, password):
+        if username in self.users and self.users[username] == password:
+            return True
+        return False
