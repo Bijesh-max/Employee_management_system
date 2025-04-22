@@ -1,0 +1,512 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from tkcalendar import DateEntry
+from datetime import datetime
+from PIL import Image, ImageTk, ExifTags  # Added ExifTags for orientation handling
+from utils.file_handler import FileHandler
+from database.db_operations import DatabaseOperations
+
+# Validation functions
+def validate_mobile(mobile):
+    return len(mobile) == 10 and mobile.isdigit()
+
+def validate_pincode(pincode):
+    return len(pincode) == 6 and pincode.isdigit()
+
+def validate_date(date_str):
+    if not date_str:
+        return False
+    try:
+        # Check if the format matches DD/MM/YYYY
+        if not (len(date_str) == 10 and date_str[2] == '/' and date_str[5] == '/'):
+            return False
+        day, month, year = map(int, date_str.split('/'))
+        # Validate ranges
+        if not (1 <= day <= 31):
+            return False
+        if not (1 <= month <= 12):
+            return False
+        if not (1900 <= year <= 9999):
+            return False
+        # Create a datetime object to validate the date (e.g., 31/02/2023 is invalid)
+        datetime.strptime(date_str, "%d/%m/%Y")
+        return True
+    except ValueError:
+        return False
+
+# Helper function to fix image orientation based on EXIF data
+def fix_orientation(image):
+    try:
+        # Get EXIF data
+        for orientation in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[orientation] == 'Orientation':
+                break
+        
+        exif = image._getexif()
+        if exif is not None and orientation in exif:
+            orientation_value = exif[orientation]
+            if orientation_value == 3:
+                image = image.rotate(180, expand=True)
+            elif orientation_value == 6:
+                image = image.rotate(270, expand=True)
+            elif orientation_value == 8:
+                image = image.rotate(90, expand=True)
+    except (AttributeError, KeyError, IndexError, TypeError):
+        # If there's no EXIF data or an error occurs, return the image as is
+        pass
+    return image
+
+class EmployeeForm:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Add Employees")
+
+        # Set window size dynamically based on screen resolution
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = int(screen_width * 0.9)
+        window_height = int(screen_height * 0.9)
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        # Set modern background color
+        self.root.configure(bg="#CDAA7D")  # Dark blue-gray background
+
+        self.db = DatabaseOperations()
+        self.file_handler = FileHandler()
+
+        # Variables for form fields
+        self.reg_no_var = tk.StringVar(value=self.get_next_registration_number())
+        self.date_var = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y"))
+        self.name_var = tk.StringVar()
+        self.dob_var = tk.StringVar()
+        self.id_type_var = tk.StringVar()
+        self.id_no_var = tk.StringVar()
+        self.mobile_var = tk.StringVar()
+        self.gender_var = tk.StringVar()
+        self.nationality_var = tk.StringVar()
+        self.village_var = tk.StringVar()
+        self.police_station_var = tk.StringVar()
+        self.tehsil_var = tk.StringVar()
+        self.district_var = tk.StringVar()
+        self.pincode_var = tk.StringVar()
+        self.state_var = tk.StringVar()
+        self.father_var = tk.StringVar()
+        self.mother_var = tk.StringVar()
+        self.member1_var = tk.StringVar()
+        self.member1_mobile_var = tk.StringVar()
+        self.member2_var = tk.StringVar()
+        self.member2_mobile_var = tk.StringVar()
+        self.reference_var = tk.StringVar()
+        self.machine_no_var = tk.StringVar()
+        self.remarks_var = tk.StringVar()
+        self.photo_path = tk.StringVar()
+        self.id_path = tk.StringVar()
+
+        self.photo_label = None
+        self.id_label = None  # New label for ID preview
+
+        self.create_gui()
+
+    def get_next_registration_number(self):
+        last_reg_no = self.db.get_last_registration_number()
+        if last_reg_no:
+            last_num = int(last_reg_no)
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        return f"{next_num:04d}"
+
+    def create_gui(self):
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        main_frame = tk.Frame(self.root, bg="#CDAA7D")
+        main_frame.grid(row=0, column=0, padx=50, pady=20, sticky="nsew")
+
+        main_frame.grid_rowconfigure(2, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_columnconfigure(2, weight=1)
+
+        # Header frame with gradient-like background
+        header_frame = tk.Frame(main_frame, bg="#8B7355")
+        header_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        tk.Label(
+            header_frame,
+            text="ADD EMPLOYEE DETAILS",
+            font=("Helvetica", 18, "bold"),
+            fg="white",
+            bg="#8B7355",
+            pady=10
+        ).grid(row=0, column=0, columnspan=3, sticky="ew")
+
+        # Top Row (Registration No. and Date)
+        top_frame = tk.Frame(main_frame, bg="#CDAA7D")
+        top_frame.grid(row=1, column=0, columnspan=3, pady=10, sticky="ew")
+
+        tk.Label(top_frame, text="REGISTRATION NO.:", font=("Helvetica", 12, "bold"), fg="white", bg="#CDAA7D").grid(row=0, column=0, padx=10, pady=10, sticky="e")
+        tk.Entry(top_frame, textvariable=self.reg_no_var, width=10, font=("Helvetica", 12), state="readonly").grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        tk.Label(top_frame, text="Date:", font=("Helvetica", 12, "bold"), fg="white", bg="#CDAA7D").grid(row=0, column=2, padx=10, pady=10, sticky="e")
+        date_entry = DateEntry(
+            top_frame,
+            textvariable=self.date_var,
+            width=12,
+            font=("Helvetica", 12),
+            background='#8B7355',
+            foreground='white',
+            borderwidth=2,
+            date_pattern='dd/mm/yyyy',
+            state='readonly'
+        )
+        date_entry.grid(row=0, column=3, padx=10, pady=10, sticky="w")
+
+        # Main Content Frame (Split into Left, Middle, and Right)
+        content_frame = tk.Frame(main_frame, bg="#CDAA7D")
+        content_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
+        content_frame.grid_rowconfigure(0, weight=1)
+        content_frame.grid_columnconfigure(0, weight=1)
+        content_frame.grid_columnconfigure(1, weight=1)
+        content_frame.grid_columnconfigure(2, weight=1)
+
+        # Left Side (Personal Details and Contact Details)
+        left_frame = tk.Frame(content_frame, bg="#8B7355")
+        left_frame.grid(row=0, column=0, padx=10, sticky="nsew")
+
+        # Personal Details
+        personal_frame = tk.LabelFrame(left_frame, text="PERSONAL DETAILS", font=("Helvetica", 14, "bold"), fg="white", bg="#8B7355")
+        personal_frame.grid(row=0, column=0, pady=10, sticky="ew")
+
+        # NAME (Mandatory)
+        name_label_frame = tk.Frame(personal_frame, bg="#8B7355")
+        name_label_frame.grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(name_label_frame, text="NAME:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").pack(side="left")
+        tk.Label(name_label_frame, text="*", font=("Helvetica", 12, "bold"), fg="red", bg="#8B7355").pack(side="left")
+        tk.Entry(personal_frame, textvariable=self.name_var, width=40, font=("Helvetica", 12)).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        # DOB (Mandatory)
+        dob_label_frame = tk.Frame(personal_frame, bg="#8B7355")
+        dob_label_frame.grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(dob_label_frame, text="DOB (DD/MM/YYYY):", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").pack(side="left")
+        tk.Label(dob_label_frame, text="*", font=("Helvetica", 12, "bold"), fg="red", bg="#8B7355").pack(side="left")
+        dob_entry = tk.Entry(
+            personal_frame,
+            textvariable=self.dob_var,
+            width=15,
+            font=("Helvetica", 12)
+        )
+        dob_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(personal_frame, text="ID TYPE:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        ttk.Combobox(personal_frame, textvariable=self.id_type_var, values=["Aadhar", "PAN", "Voter ID"], width=15, font=("Helvetica", 12)).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(personal_frame, text="ID NO.:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(personal_frame, textvariable=self.id_no_var, width=20, font=("Helvetica", 12)).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(personal_frame, text="MOBILE:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+
+        tk.Entry(personal_frame, textvariable=self.mobile_var, width=15, font=("Helvetica", 12)).grid(row=4, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(personal_frame, text="GENDER:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=5, column=0, padx=5, pady=5, sticky="e")
+        ttk.Combobox(personal_frame, textvariable=self.gender_var, values=["Male", "Female", "Other"], width=15, font=("Helvetica", 12)).grid(row=5, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(personal_frame, text="NATIONALITY:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=6, column=0, padx=5, pady=5, sticky="e")
+        ttk.Combobox(personal_frame, textvariable=self.nationality_var, values=["Indian", "Other"], width=15, font=("Helvetica", 12)).grid(row=6, column=1, padx=5, pady=5, sticky="w")
+
+        # Contact Details
+        contact_frame = tk.LabelFrame(left_frame, text="CONTACT DETAILS", font=("Helvetica", 14, "bold"), fg="white", bg="#8B7355")
+        contact_frame.grid(row=1, column=0, pady=10, sticky="ew")
+
+        tk.Label(contact_frame, text="VILLAGE:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(contact_frame, textvariable=self.village_var, width=40, font=("Helvetica", 12)).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(contact_frame, text="POLICE ST.:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(contact_frame, textvariable=self.police_station_var, width=40, font=("Helvetica", 12)).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(contact_frame, text="TEHSIL:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(contact_frame, textvariable=self.tehsil_var, width=40, font=("Helvetica", 12)).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(contact_frame, text="DISTRICT:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(contact_frame, textvariable=self.district_var, width=40, font=("Helvetica", 12)).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(contact_frame, text="PINCODE:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(contact_frame, textvariable=self.pincode_var, width=10, font=("Helvetica", 12)).grid(row=4, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(contact_frame, text="STATE:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=5, column=0, padx=5, pady=5, sticky="e")
+        ttk.Combobox(contact_frame, textvariable=self.state_var, values=[
+            "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+            "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+            "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+            "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands",
+            "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Lakshadweep", "Puducherry"
+        ], width=40, font=("Helvetica", 12)).grid(row=5, column=1, padx=5, pady=5, sticky="w")
+
+        # Middle Side (Family Details, Reference Details, Machine Details)
+        middle_frame = tk.Frame(content_frame, bg="#8B7355")
+        middle_frame.grid(row=0, column=1, padx=10, sticky="nsew")
+
+        # Family Details
+        family_frame = tk.LabelFrame(middle_frame, text="FAMILY DETAILS", font=("Helvetica", 14, "bold"), fg="white", bg="#8B7355")
+        family_frame.grid(row=0, column=0, pady=10, sticky="ew")
+
+        tk.Label(family_frame, text="FATHER:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.father_var, width=40, font=("Helvetica", 12)).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(family_frame, text="MOTHER:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.mother_var, width=40, font=("Helvetica", 12)).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(family_frame, text="MEMBER1:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.member1_var, width=40, font=("Helvetica", 12)).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(family_frame, text="MO.1:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.member1_mobile_var, width=15, font=("Helvetica", 12)).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(family_frame, text="MEMBER2:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=4, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.member2_var, width=40, font=("Helvetica", 12)).grid(row=4, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(family_frame, text="MO.2:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=5, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(family_frame, textvariable=self.member2_mobile_var, width=15, font=("Helvetica", 12)).grid(row=5, column=1, padx=5, pady=5, sticky="w")
+
+        # Reference and Machine Details
+        ref_machine_frame = tk.Frame(middle_frame, bg="#8B7355")
+        ref_machine_frame.grid(row=1, column=0, pady=10, sticky="ew")
+
+        # Reference Details
+        reference_frame = tk.LabelFrame(ref_machine_frame, text="REFERENCE DETAILS", font=("Helvetica", 14, "bold"), fg="white", bg="#8B7355")
+        reference_frame.grid(row=0, column=0, padx=5, sticky="ew")
+
+        # NAME (Mandatory)
+        ref_name_label_frame = tk.Frame(reference_frame, bg="#8B7355")
+        ref_name_label_frame.grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(ref_name_label_frame, text="NAME:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").pack(side="left")
+        tk.Label(ref_name_label_frame, text="*", font=("Helvetica", 12, "bold"), fg="red", bg="#8B7355").pack(side="left")
+        tk.Entry(reference_frame, textvariable=self.reference_var, width=40, font=("Helvetica", 12)).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        # Machine Details
+        machine_frame = tk.LabelFrame(ref_machine_frame, text="MACHINE DETAILS", font=("Helvetica", 14, "bold"), fg="white", bg="#8B7355")
+        machine_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
+        # MACHINE NO. (Mandatory)
+        machine_no_label_frame = tk.Frame(machine_frame, bg="#8B7355")
+        machine_no_label_frame.grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(machine_no_label_frame, text="MACHINE NO.:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").pack(side="left")
+        tk.Label(machine_no_label_frame, text="*", font=("Helvetica", 12, "bold"), fg="red", bg="#8B7355").pack(side="left")
+        tk.Entry(machine_frame, textvariable=self.machine_no_var, width=15, font=("Helvetica", 12)).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        tk.Label(machine_frame, text="REMARKS:", font=("Helvetica", 12, "bold"), fg="white", bg="#8B7355").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        tk.Entry(machine_frame, textvariable=self.remarks_var, width=40, font=("Helvetica", 12)).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        # Right Side (Upload Buttons and Previews)
+        right_frame = tk.Frame(content_frame, bg="#8B7355")
+        right_frame.grid(row=0, column=2, padx=10, sticky="nsew")
+
+        # Upload Buttons
+        upload_frame = tk.Frame(right_frame, bg="#8B7355")
+        upload_frame.grid(row=0, column=0, pady=10, sticky="n")
+
+        tk.Button(upload_frame, text="UPLOAD PHOTO", bg="#3498db", fg="white", font=("Helvetica", 12, "bold"), command=self.upload_photo).grid(row=0, column=0, padx=5, pady=5)
+        self.photo_label = tk.Label(upload_frame, text="No Photo Uploaded", font=("Helvetica", 12), bg="#8B7355")
+        self.photo_label.grid(row=1, column=0, padx=5, pady=5)
+
+        tk.Button(upload_frame, text="UPLOAD ID", bg="#3498db", fg="white", font=("Helvetica", 12, "bold"), command=self.upload_id).grid(row=2, column=0, padx=5, pady=5)
+        self.id_label = tk.Label(upload_frame, text="No ID Uploaded", font=("Helvetica", 12), bg="#8B7355")
+        self.id_label.grid(row=3, column=0, padx=5, pady=5)
+
+        # Bottom Buttons
+        button_frame = tk.Frame(main_frame, bg="#CDAA7D")
+        button_frame.grid(row=3, column=0, columnspan=3, pady=10)
+
+        button_config = {
+            "font": ("Helvetica", 16, "bold"),
+            "bg": "#8B7355",
+            "fg": "white",
+            "activebackground": "#8B7355",
+            "activeforeground": "white",
+            "borderwidth": 0,
+            "padx": 10,
+            "pady": 0
+        }
+
+        tk.Button(button_frame, text="SAVE", command=self.save_data, **button_config).grid(row=0, column=0, padx=10, pady=10)
+        tk.Button(button_frame, text="RESET", command=self.reset_form, **button_config).grid(row=0, column=1, padx=10, pady=10)
+        tk.Button(button_frame, text="EXIT", command=self.root.destroy, **button_config).grid(row=0, column=2, padx=10, pady=10)
+
+    def upload_photo(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png *.jpg *.jpeg")])
+        if file_path:
+            try:
+                saved_path = self.file_handler.save_photo(file_path)
+                self.photo_path.set(saved_path)
+
+                # Open and fix orientation
+                image = Image.open(file_path)
+                image = fix_orientation(image)  # Fix orientation based on EXIF
+                image = image.resize((300, 300), Image.Resampling.LANCZOS)  # Resize to 300x300
+                print(f"Photo resized to: {image.size}")  # Debugging
+                photo = ImageTk.PhotoImage(image)
+                self.photo_label.configure(image=photo, text="")
+                self.photo_label.image = photo  # Keep a reference to avoid garbage collection
+                messagebox.showinfo("Success", "Photo uploaded successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load photo: {e}")
+
+    def upload_id(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png *.jpg *.jpeg")])
+        if file_path:
+            try:
+                saved_path = self.file_handler.save_id(file_path)
+                self.id_path.set(saved_path)
+
+                # Open and fix orientation
+                image = Image.open(file_path)
+                image = fix_orientation(image)  # Fix orientation based on EXIF
+                image = image.resize((300, 300), Image.Resampling.LANCZOS)  # Resize to 300x300
+                print(f"ID resized to: {image.size}")  # Debugging
+                id_image = ImageTk.PhotoImage(image)
+                self.id_label.configure(image=id_image, text="")
+                self.id_label.image = id_image  # Keep a reference to avoid garbage collection
+                messagebox.showinfo("Success", "ID uploaded successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load ID: {e}")
+
+    def convert_date_format(self, date_str):
+        if not date_str:
+            return None
+        # First validate the date format and value
+        if not validate_date(date_str):
+            raise ValueError(f"Invalid date format: {date_str}. Please use DD/MM/YYYY format and a valid date.")
+        try:
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            return date_obj.strftime("%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid date: {date_str}. Please enter a valid date in DD/MM/YYYY format.")
+
+    def save_data(self):
+        # Check mandatory fields
+        if not self.name_var.get():
+            messagebox.showerror("Error", "Name is required!")
+            return
+        if not self.dob_var.get():
+            messagebox.showerror("Error", "Date of Birth (DOB) is required!")
+            return
+        if not validate_date(self.dob_var.get()):
+            messagebox.showerror("Error", "Invalid Date of Birth! Please enter a valid date in DD/MM/YYYY format (e.g., 01/01/1990).")
+            return
+        if not self.reference_var.get():
+            messagebox.showerror("Error", "Reference Name is required!")
+            return
+        if not self.machine_no_var.get():
+            messagebox.showerror("Error", "Machine Number is required!")
+            return
+
+        # Existing validation checks
+        if self.mobile_var.get() and not validate_mobile(self.mobile_var.get()):
+            messagebox.showerror("Error", "Invalid mobile number! Must be 10 digits.")
+            return
+        if self.member1_mobile_var.get() and not validate_mobile(self.member1_mobile_var.get()):
+            messagebox.showerror("Error", "Invalid Member 1 mobile number! Must be 10 digits.")
+            return
+        if self.member2_mobile_var.get() and not validate_mobile(self.member2_mobile_var.get()):
+            messagebox.showerror("Error", "Invalid Member 2 mobile number! Must be 10 digits.")
+            return
+        if self.pincode_var.get() and not validate_pincode(self.pincode_var.get()):
+            messagebox.showerror("Error", "Invalid pincode! Must be 6 digits.")
+            return
+        if self.db.employee_exists(self.id_no_var.get(), None):
+            messagebox.showerror("Error", "ID No. already exists in the database!")
+            return
+
+        try:
+            date_db = self.convert_date_format(self.date_var.get())
+            dob_db = self.convert_date_format(self.dob_var.get())
+            id_type = self.id_type_var.get() if self.id_type_var.get() else None
+            id_no = self.id_no_var.get() if self.id_no_var.get() else None
+            mobile = self.mobile_var.get() if self.mobile_var.get() else None
+            gender = self.gender_var.get() if self.gender_var.get() else None
+            nationality = self.nationality_var.get() if self.nationality_var.get() else None
+            village = self.village_var.get() if self.village_var.get() else None
+            police_station = self.police_station_var.get() if self.police_station_var.get() else None
+            tehsil = self.tehsil_var.get() if self.tehsil_var.get() else None
+            district = self.district_var.get() if self.district_var.get() else None
+            pincode = self.pincode_var.get() if self.pincode_var.get() else None
+            state = self.state_var.get() if self.state_var.get() else None
+            father_name = self.father_var.get() if self.father_var.get() else None
+            mother_name = self.mother_var.get() if self.mother_var.get() else None
+            member1_name = self.member1_var.get() if self.member1_var.get() else None
+            member1_mobile = self.member1_mobile_var.get() if self.member1_mobile_var.get() else None
+            member2_name = self.member2_var.get() if self.member2_var.get() else None
+            member2_mobile = self.member2_mobile_var.get() if self.member2_mobile_var.get() else None
+            reference_name = self.reference_var.get() if self.reference_var.get() else None
+            machine_no = self.machine_no_var.get() if self.machine_no_var.get() else None
+            remarks = self.remarks_var.get() if self.remarks_var.get() else None
+            photo_path = self.photo_path.get() if self.photo_path.get() else None
+            id_path = self.id_path.get() if self.id_path.get() else None
+
+            self.db.insert_employee(
+                registration_no=self.reg_no_var.get(),
+                date=date_db,
+                name=self.name_var.get(),
+                dob=dob_db,
+                id_type=id_type,
+                id_no=id_no,
+                mobile=mobile,
+                gender=gender,
+                nationality=nationality,
+                village=village,
+                police_station=police_station,
+                tehsil=tehsil,
+                district=district,
+                pincode=pincode,
+                state=state,
+                father_name=father_name,
+                mother_name=mother_name,
+                member1_name=member1_name,
+                member1_mobile=member1_mobile,
+                member2_name=member2_name,
+                member2_mobile=member2_mobile,
+                reference_name=reference_name,
+                machine_no=machine_no,
+                remarks=remarks,
+                photo_path=photo_path,
+                id_path=id_path
+            )
+            messagebox.showinfo("Success", "Data saved successfully!")
+            self.reset_form()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saving data: {e}")
+
+    def reset_form(self):
+        self.reg_no_var.set(self.get_next_registration_number())
+        self.date_var.set(datetime.now().strftime("%d/%m/%Y"))
+        self.name_var.set("")
+        self.dob_var.set("")
+        self.id_type_var.set("")
+        self.id_no_var.set("")
+        self.mobile_var.set("")
+        self.gender_var.set("")
+        self.nationality_var.set("")
+        self.village_var.set("")
+        self.police_station_var.set("")
+        self.tehsil_var.set("")
+        self.district_var.set("")
+        self.pincode_var.set("")
+        self.state_var.set("")
+        self.father_var.set("")
+        self.mother_var.set("")
+        self.member1_var.set("")
+        self.member1_mobile_var.set("")
+        self.member2_var.set("")
+        self.member2_mobile_var.set("")
+        self.reference_var.set("")
+        self.machine_no_var.set("")
+        self.remarks_var.set("")
+        self.photo_path.set("")
+        self.id_path.set("")
+        self.photo_label.configure(image="", text="No Photo Uploaded")
+        self.id_label.configure(image="", text="No ID Uploaded")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = EmployeeForm(root)
+    root.mainloop()
