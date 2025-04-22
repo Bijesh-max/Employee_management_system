@@ -1,0 +1,63 @@
+# Employee Management System (EMS)
+
+A robust Cross-platform Employee Management System built with Python, Tkinter, and PostgreSQL. This application allows users to manage employee records, generate PDFs, and handle authentication seamlessly. The system includes a GUI interface and supports features like employee database management and PDF generation with photos.It has only two users, 'admin' and 'user'. It is reliable , fast and integrated with modern features and UI for better usability.
+
+## Features
+- **Employee Database Management**: Add, view, and search employee records.
+- **PDF Generation**: Generate detailed employee PDFs with photos and wrapped text.
+- **Authentication**: Secure login with admin and user roles.
+- **No Console GUI**: Runs as a windowed application without a console.
+- **Custom Icon**: Includes a custom app icon for the executable.
+- **Database Integration**: Uses PostgreSQL for data storage.
+
+## Prerequisites
+- **Python**: 3.8 or higher.
+- **PostgreSQL**: Installed and running (with `employee_management` database).
+- **Dependencies**: Listed in `requirements.txt`.
+
+**Credentials**: Login credentials (`admin`/`admin123`, `user`/`user123`)
+
+**File structure**:
+
+EMD/                         # Root directory
+├── main.py                 # Main application file
+├── gui/                    # GUI related files
+│   ├── __init__.py
+│   ├── employee_form.py    # Employee form ka code
+│   └── dashboard.py       # Dashboard ka code (basic version)
+|   |__ employee_leave.py   # Employee leave form ka code
+|   |__ employee_database.py  # Employee database form ka code 
+|   |__ employee_rejoin.py  # Employee rejoin form ka code
+|   |__ leave_rejoin_details.py # Leave and rejoin details form ka code
+|   |__ login.py           # Login form ka code
+|-- app_manager.py          # App manager ka code
+├── database/               # Database related files
+│   ├── __init__.py
+│   ├── db_config.py        # Database configuration
+│   └── db_operations.py    # Database operations
+├── utils/                  # Utility functions
+│   ├── __init__.py
+│   ├── validations.py      # Form validations
+│   └── file_handler.py     # File handling for uploads
+├── sql/                    # SQL scripts
+│   └── create_tables.sql   # Table creation script
+├── requirements.txt        # Dependencies
+└── README.md               # Documentation
+|__ file structure         # File structure
+|___ auth/                 # Authentication related files
+    |__ __init__.py
+    |___ auth.py            # Authentication code
+
+## How to use:
+- **Login**: Upon clicking the EMD application logo, a login dashboard will appear on the screen . With valid Username and Password entered , the main dashboard of the employee management system will appear, which contains all the forms and database and a logout button at the end
+- **Dashboard**: After successful login , a fullscreen dashboard will appear on the dektop with main 3 Forms , 2 databases and a logout button .
+- **Master form**: The First form is the 'master form' or 'add employee details' form, where user can fill out details of a new employee with all the neccesary details like Personal details, Contact details, Family details , Reference Details and Machine details . It also has two upload options like photo & id of the person . The Personal details, Reference Details and machine Details are mandatory Fields.
+- **Leave Form**: The Leave form is basically filled if an employee is leaving the company or going on a holiday . It has a Id_no search option functionality through which we can see the see the name and machine no of the employee about to take a leave. Upon entering the Id_no. , it auto detects the name and machine no of the employee . It has older feilds like date and reason of the leave.
+- **Rejoin Form**:The Rejoin form is filled if the employees who previously left the company , comes back again . It also has the same search functionality of id_no and date on which he/she arrived.
+-**Leave & rejoin details**: This section includes all the details of the employees whoes form has filled up through Leave and Rejoin Forms.It also has a Date search functionality to view all the employees left or rejoined on any particular date.
+-**Database**: This section is most important because , it conatins data of all the employees whose details are filled in the master form . It has two search options funtionalities . like search by id-no & search by name . it also has a Pdf generate Button/funtion , which arranges all the deatils in a A4 format , with the photo of the employees.
+- **Log out**: Lastly there is the logout button which , closes all the dashboards and again returns to the log in GUI.
+
+## Acknowledgments
+**Thanks to the open-source community for tools like PyInstaller, Tkinter, and PostgreSQL.**
+**Inspired by employee management needs in small businesses.**
