@@ -1,0 +1,20 @@
+# app_manager.py
+import tkinter as tk
+from gui.login import LoginScreen
+from gui.dashboard import Dashboard
+
+class AppManager:
+    def __init__(self):
+        self.root = None
+
+    def start(self):
+        self.root = tk.Tk()
+        app = LoginScreen(self.root, self.show_dashboard)
+        self.root.mainloop()
+
+    def show_dashboard(self):
+        if self.root:
+            self.root.destroy()
+        self.root = tk.Tk()
+        app = Dashboard(self.root, self.start)
+        self.root.mainloop()
