@@ -1,0 +1,111 @@
+# gui/dashboard.py
+import tkinter as tk
+from tkinter import ttk, messagebox
+from gui.employee_form import EmployeeForm
+from gui.employee_leave import EmployeeLeave
+from gui.leave_rejoin_details import LeaveRejoinDetails
+from gui.employee_database import EmployeeDatabase
+
+# Lazy import for EmployeeRejoin to avoid potential import issues
+def get_employee_rejoin():
+    from gui.employee_rejoin import EmployeeRejoin
+    return EmployeeRejoin
+
+class Dashboard:
+    def __init__(self, root, restart_app_callback):
+        self.root = root
+        self.root.title("Dashboard - Aggarwalla Teak Pvt. Ltd.")
+
+        # Set fullscreen mode
+        self.root.attributes('-fullscreen', True)  # Fullscreen mode enabled
+
+        # Get screen resolution for proper scaling
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        self.root.geometry(f"{screen_width}x{screen_height}+0+0")  # Set geometry to fullscreen
+
+        # Set modern background color
+        self.root.configure(bg="#EEE8CD")  # Dark blue-gray background
+
+        self.restart_app_callback = restart_app_callback
+
+        self.create_gui()
+
+    def create_gui(self):
+        # Main frame with modern background
+        main_frame = tk.Frame(self.root, bg="#EEE8CD")
+        main_frame.pack(padx=20, pady=20, fill="both", expand=True)
+
+        # Header frame with gradient-like background
+        header_frame = tk.Frame(main_frame, bg="#8B7355")
+        header_frame.pack(fill="x", pady=(0, 10))
+        tk.Label(
+            header_frame,
+            text="EMPLOYEES'  MANAGEMENT  SYSTEM",
+            font=("Helvetica", 24, "bold"),  # Increased font size for better visibility in fullscreen
+            fg="white",
+            bg="#8B7355",
+            pady=20
+        ).pack()
+
+        # Button frame
+        button_frame = tk.Frame(main_frame, bg="#8B7355")
+        button_frame.pack(pady=40, expand=True)  # Increased padding for better spacing in fullscreen
+
+        # Button style using tk.Button instead of ttk.Button for reliable background color
+        button_config = {
+            "font": ("Helvetica", 21, "bold"),
+            "bg": "#8B7355",  # Black background
+            "fg": "white",    # White text
+            "activebackground": "#8B7355",  # Dark gray on hover
+            "activeforeground": "white",
+            "borderwidth": 0,
+            "padx": 30,
+            "pady": 15
+        }
+
+        # Buttons using tk.Button
+        tk.Button(button_frame, text="Master Form", command=self.open_employee_form, **button_config).pack(pady=15)
+        tk.Button(button_frame, text="Leave Form", command=self.open_employee_leave, **button_config).pack(pady=15)
+        tk.Button(button_frame, text="Rejoin Form", command=self.open_employee_rejoin, **button_config).pack(pady=15)
+        tk.Button(button_frame, text="Leave & Rejoin Details", command=self.open_leave_rejoin_details, **button_config).pack(pady=15)
+        tk.Button(button_frame, text="Employee Details", command=self.open_employee_database, **button_config).pack(pady=15)
+        tk.Button(button_frame, text="Logout", command=self.logout, **button_config).pack(pady=15)
+
+        # Footer
+        tk.Label(
+            main_frame,
+            text="Application Developed By Bijoy Chetry, Contact no. 9101492283. ",
+            font=("Helvetica", 18, "bold"),  # Increased font size for better visibility
+            fg="#104E8B",
+            bg="#EEE8CD"
+        ).pack(side=tk.BOTTOM, pady=30)  # Increased padding for better spacing
+
+        # Bind Escape key to exit fullscreen
+        self.root.bind('<Escape>', lambda event: self.root.attributes('-fullscreen', False))
+
+    def open_employee_form(self):
+        form_window = tk.Toplevel(self.root)
+        EmployeeForm(form_window)
+
+    def open_employee_leave(self):
+        leave_window = tk.Toplevel(self.root)
+        EmployeeLeave(leave_window)
+
+    def open_employee_rejoin(self):
+        rejoin_window = tk.Toplevel(self.root)
+        EmployeeRejoin = get_employee_rejoin()  # Lazy import
+        EmployeeRejoin(rejoin_window)
+
+    def open_leave_rejoin_details(self):
+        details_window = tk.Toplevel(self.root)
+        LeaveRejoinDetails(details_window)
+
+    def open_employee_database(self):
+        database_window = tk.Toplevel(self.root)
+        EmployeeDatabase(database_window)
+
+    def logout(self):
+        if messagebox.askyesno("Confirm Logout", "Are you sure you want to logout?"):
+            self.root.destroy()
+            self.restart_app_callback()
