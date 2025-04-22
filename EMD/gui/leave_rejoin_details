@@ -1,0 +1,279 @@
+# gui/leave_rejoin_details.py
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+from database.db_operations import DatabaseOperations
+
+class LeaveRejoinDetails:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Employee Leave and Rejoin Details")
+
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = int(screen_width * 0.7)
+        window_height = int(screen_height * 0.7)
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        self.root.configure(bg="#EEE8CD")
+        self.db = DatabaseOperations()
+        self.search_date_var = tk.StringVar()  # New variable for date search
+
+        self.create_gui()
+
+    def create_rounded_button(self, parent, text, command, bg="#EEE8CD", fg="white", width=100, height=40, radius=15):
+        # Create a Canvas for the rounded button
+        canvas = tk.Canvas(parent, width=width, height=height, bg=parent["bg"], highlightthickness=0)
+        
+        # Draw a rounded rectangle
+        points = [
+            (radius, 0),  # Top-left corner start
+            (width - radius, 0),  # Top-right corner start
+            (width, radius),  # Top-right corner curve
+            (width, height - radius),  # Bottom-right corner start
+            (width - radius, height),  # Bottom-right corner curve
+            (radius, height),  # Bottom-left corner start
+            (0, height - radius),  # Bottom-left corner curve
+            (0, radius),  # Top-left corner curve
+            (radius, 0)  # Close the shape
+        ]
+        canvas.create_polygon(points, smooth=True, fill=bg, outline=bg)
+        
+        # Add text on the button
+        canvas.create_text(width//2, height//2, text=text, font=("Helvetica", 12, "bold"), fill=fg)
+        
+        # Bind click event to the canvas
+        canvas.bind("<Button-1>", lambda event: command())
+        
+        # Add hover effect
+        def on_enter(event):
+            canvas.delete("all")
+            points = [
+                (radius, 0), (width - radius, 0), (width, radius),
+                (width, height - radius), (width - radius, height),
+                (radius, height), (0, height - radius), (0, radius), (radius, 0)
+            ]
+            canvas.create_polygon(points, smooth=True, fill="#333333", outline="#333333")
+            canvas.create_text(width//2, height//2, text=text, font=("Helvetica", 12, "bold"), fill=fg)
+
+        def on_leave(event):
+            canvas.delete("all")
+            points = [
+                (radius, 0), (width - radius, 0), (width, radius),
+                (width, height - radius), (width - radius, height),
+                (radius, height), (0, height - radius), (0, radius), (radius, 0)
+            ]
+            canvas.create_polygon(points, smooth=True, fill=bg, outline=bg)
+            canvas.create_text(width//2, height//2, text=text, font=("Helvetica", 12, "bold"), fill=fg)
+
+        canvas.bind("<Enter>", on_enter)
+        canvas.bind("<Leave>", on_leave)
+
+        return canvas
+
+    def create_gui(self):
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        main_frame = tk.Frame(self.root, bg="#CDAA7D")
+        main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        main_frame.grid_rowconfigure(2, weight=1)  # Adjusted row configuration
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        header_frame = tk.Frame(main_frame, bg="#8B7355")
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        tk.Label(
+            header_frame,
+            text="EMPLOYEE LEAVE AND REJOIN DETAILS",
+            font=("Helvetica", 18, "bold"),
+            fg="white",
+            bg="#8B7355",
+            pady=10
+        ).grid(row=0, column=0, sticky="ew")
+
+        # Add search frame for date
+        search_frame = tk.Frame(main_frame, bg="#8B7355")
+        search_frame.grid(row=1, column=0, pady=(15,0), sticky="ew")
+        tk.Label(search_frame, text="Search by Date (dd/mm/yyyy):", font=("Helvetica", 13, "bold"), fg="white", bg="#8B7355").grid(row=0, column=0, padx=5)
+        tk.Entry(search_frame, textvariable=self.search_date_var, width=15, font=("Helvetica", 12)).grid(row=0, column=1, padx=5)
+        tk.Button(search_frame, text="Search", command=self.load_data, font=("Helvetica", 12, "bold"), bg="#8B7355", fg="white").grid(row=0, column=2, padx=5)
+        tk.Button(search_frame, text="Clear Search", command=self.clear_search, font=("Helvetica", 12, "bold"), bg="#8B7355", fg="white").grid(row=0, column=3, padx=5)
+
+        table_frame = tk.Frame(main_frame, bg="#8B7355")
+        table_frame.grid(row=2, column=0, sticky="nsew")
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
+
+        style = ttk.Style()
+        style.configure(
+            "Modern.Treeview",
+            font=("Helvetica", 10),
+            rowheight=25,
+            background="#ecf0f1",
+            foreground="#2c3e50",
+            fieldbackground="#ecf0f1"
+        )
+        style.configure(
+            "Modern.Treeview.Heading",
+            font=("Helvetica", 12, "bold"),
+            background="#333333",
+            foreground="#000000"
+        )
+        style.map(
+            "Modern.Treeview",
+            background=[("selected", "#2980b9")]
+        )
+
+        columns = ("Serial No.", "Registration No.", "Name", "Date", "Reason", "Type")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", style="Modern.Treeview", height=10)
+        self.tree.heading("Serial No.", text="Serial No.")
+        self.tree.heading("Registration No.", text="Registration No.")
+        self.tree.heading("Name", text="Name")
+        self.tree.heading("Date", text="Date")
+        self.tree.heading("Reason", text="Reason")
+        self.tree.heading("Type", text="Type")
+        self.tree.column("Serial No.", width=100, stretch=True)
+        self.tree.column("Registration No.", width=150, stretch=True)
+        self.tree.column("Name", width=200, stretch=True)
+        self.tree.column("Date", width=150, stretch=True)
+        self.tree.column("Reason", width=300, stretch=True)
+        self.tree.column("Type", width=100, stretch=True)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        self.tree.tag_configure("oddrow", background="#dfe6e9")
+        self.tree.tag_configure("evenrow", background="#b2bec3")
+
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        button_frame = tk.Frame(main_frame, bg="#CDAA7D")
+        button_frame.grid(row=3, column=0, pady=20, sticky="ew")
+
+        delete_button = self.create_rounded_button(
+            button_frame,
+            text="DELETE",
+            command=self.delete_record,
+            bg="#8B7355",
+            fg="white",
+            width=100,
+            height=40,
+            radius=0
+        )
+        delete_button.grid(row=0, column=0, padx=10)
+
+        exit_button = self.create_rounded_button(
+            button_frame,
+            text="EXIT",
+            command=self.root.destroy,
+            bg="#8B7355",
+            fg="white",
+            width=100,
+            height=40,
+            radius=0
+        )
+        exit_button.grid(row=0, column=1, padx=10)
+
+        self.load_data()
+
+    def convert_date_format(self, date_str):
+        if not date_str:
+            return None
+        try:
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            return date_obj.strftime("%Y/%m/%d")
+        except ValueError:
+            raise ValueError(f"Invalid date format: {date_str}. Please use dd/mm/yyyy")
+
+    def load_data(self):
+        print("Clearing Treeview items...")
+        self.tree.delete(*self.tree.get_children())
+
+        search_date = self.search_date_var.get().strip()
+        try:
+            print(f"Fetching data for date: {search_date}")
+            if search_date:
+                # Validate and convert date format
+                search_date_db = self.convert_date_format(search_date)
+                # Fetch data for the specific date using the new method
+                data = self.db.get_leave_rejoin_by_date(search_date_db)
+            else:
+                # Load all data if no date is provided
+                data = self.db.get_leave_and_rejoin_details()
+
+            print(f"Data fetched: {data}")
+        except ValueError as ve:
+            messagebox.showerror("Error", str(ve))
+            return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load data: {e}")
+            return
+
+        if not data:
+            print("No data found, inserting dummy row to show headings...")
+            self.tree.insert("", tk.END, values=("N/A", "N/A", "N/A", "N/A", "N/A", "N/A"), tags=("oddrow",))
+        else:
+            print("Inserting data into Treeview...")
+            for index, row in enumerate(data, start=1):
+                registration_no = str(row[1])
+                name = str(row[5]) if row[5] else "N/A"
+                tag = "evenrow" if index % 2 == 0 else "oddrow"
+                self.tree.insert("", tk.END, values=(index, registration_no, name, row[2], row[3], row[4]), tags=(tag,))
+                print(f"Inserted row {index}: {row}")
+
+        self.tree.update()
+        self.tree.update_idletasks()
+        self.root.update()
+        print("Treeview updated.")
+
+    def delete_record(self):
+        selected_items = self.tree.selection()
+        print(f"Selected items: {selected_items}")
+        
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select a record to delete!")
+            return
+        
+        if len(selected_items) > 1:
+            messagebox.showwarning("Warning", "Please select only one record to delete!")
+            return
+
+        selected_item = selected_items[0]
+        print(f"Selected item: {selected_item}")
+
+        if not messagebox.askyesno("Confirm", "Are you sure you want to delete this record?"):
+            return
+
+        try:
+            item = self.tree.item(selected_item)
+            values = item["values"]
+            registration_no = str(values[1])
+            date = values[3]  # Date is at index 3
+            print(f"Deleting record - Registration No: {registration_no}, Date: {date}")
+
+            self.db.delete_leave_rejoin_record(registration_no, date)
+            print("Record deleted from database.")
+
+            self.tree.delete(selected_item)
+            print("Record removed from Treeview.")
+
+            self.load_data()
+            print("Data reloaded into Treeview.")
+
+            messagebox.showinfo("Success", "Record deleted successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete record: {e}")
+            print(f"Error during deletion: {e}")
+
+    def clear_search(self):
+        """Clear the search date field and reload all data."""
+        self.search_date_var.set("")  # Clear the search date entry
+        self.load_data()  # Reload all data without any filter
+        print("Search cleared and all data reloaded.")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = LeaveRejoinDetails(root)
+    root.mainloop()
