@@ -1,0 +1,461 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from database.db_operations import DatabaseOperations
+import os
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from PIL import Image, ExifTags
+import datetime
+import tempfile
+
+class EmployeeDatabase:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Employees Database - Aggarwalla Teak Pvt. Ltd.")
+
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = int(screen_width * 0.7)
+        window_height = int(screen_height * 0.7)
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        self.root.bind('<Escape>', lambda event: self.root.attributes('-fullscreen', False))
+
+        self.db = DatabaseOperations()
+
+        self.search_id_no_var = tk.StringVar()
+        self.search_name_var = tk.StringVar()
+        self.actions_visible = tk.BooleanVar(value=True)
+
+        self.create_gui()
+        self.load_data()
+
+    def create_gui(self):
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        main_frame = tk.Frame(self.root, bg="#CDAA7D")
+        main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        main_frame.grid_rowconfigure(1, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        header_frame = tk.Frame(main_frame, bg="#8B7355")
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        tk.Label(
+            header_frame,
+            text="EMPLOYEE DATABASE",
+            font=("Helvetica", 22, "bold"),
+            fg="white",
+            bg="#8B7355",
+            pady=10
+        ).grid(row=0, column=0, sticky="ew")
+
+        search_frame = tk.Frame(main_frame, bg="#8B7355")
+        search_frame.grid(row=1, column=0, pady=5, sticky="ew")
+
+        tk.Label(search_frame, text="Search by ID No.:", font=("Helvetica", 13, "bold"), fg="white", bg="#8B7355").grid(row=0, column=0, padx=5)
+        tk.Entry(search_frame, textvariable=self.search_id_no_var, width=15, font=("Helvetica", 12)).grid(row=0, column=1, padx=5)
+        tk.Label(search_frame, text="Search by Name:", font=("Helvetica", 13, "bold"), fg="white", bg="#8B7355").grid(row=0, column=2, padx=5)
+        tk.Entry(search_frame, textvariable=self.search_name_var, width=20, font=("Helvetica", 12)).grid(row=0, column=3, padx=5)
+
+        button_config = {
+            "font": ("Helvetica", 13, "bold"),
+            "bg": "#8B7355",
+            "fg": "white",
+            "activebackground": "#8B7355",
+            "activeforeground": "white",
+            "borderwidth": 0,
+            "padx": 20,
+            "pady": 10
+        }
+
+        tk.Button(search_frame, text="Search", command=self.load_data, **button_config).grid(row=0, column=4, padx=5)
+        tk.Button(search_frame, text="Clear Search", command=self.clear_search, **button_config).grid(row=0, column=5, padx=5)
+
+        table_frame = tk.Frame(main_frame, bg="#34495e")
+        table_frame.grid(row=2, column=0, sticky="nsew")
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
+
+        style = ttk.Style()
+        style.configure("Modern.Treeview", font=("Helvetica", 11), rowheight=25, background="#8B7355", foreground="#2c3e50", fieldbackground="#ecf0f1")
+        style.configure("Modern.Treeview.Heading", font=("Helvetica", 13, "bold"), background="#333333", foreground="#000000")
+        style.map("Modern.Treeview.Heading", background=[("active", "#000000")], foreground=[("active", "white")])
+        style.map("Modern.Treeview", background=[("selected", "#2980b9")])
+
+        columns = ("Registration No.", "Name", "DOB", "Mobile", "Gender", "Reference Name")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", style="Modern.Treeview", height=10)
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, minwidth=100, stretch=True)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        self.tree.tag_configure("oddrow", background="#dfe6e9")
+        self.tree.tag_configure("evenrow", background="#b2bec3")
+
+        scrollbar_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar_y.set)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+        scrollbar_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.tree.configure(xscroll=scrollbar_x.set)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tk.Button(main_frame, text="Show/Hide Actions", command=self.toggle_actions, **button_config).grid(row=3, column=0, pady=10, sticky="ew")
+
+        self.actions_frame = tk.Frame(main_frame, bg="#CDAA7D")
+        self.actions_frame.grid(row=4, column=0, pady=10, sticky="ew")
+
+        tk.Button(self.actions_frame, text="Download PDF", command=self.download_pdf, **button_config).grid(row=0, column=0, padx=10)
+        tk.Button(self.actions_frame, text="Exit", command=self.root.destroy, **button_config).grid(row=0, column=1, padx=10)
+
+    def toggle_actions(self):
+        self.actions_visible.set(not self.actions_visible.get())
+        self.actions_frame.grid_forget() if not self.actions_visible.get() else self.actions_frame.grid(row=4, column=0, pady=10, sticky="ew")
+
+    def load_data(self):
+        print("Clearing Treeview items...")
+        self.tree.delete(*self.tree.get_children())
+
+        search_id_no = self.search_id_no_var.get().strip()
+        search_name = self.search_name_var.get().strip()
+        try:
+            print(f"Fetching data with id_no: {search_id_no}, name: {search_name}")
+            data = self.db.get_all_employees(search_id_no, search_name)
+            print(f"Data fetched: {data}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load employee data: {e}")
+            print(f"Error in load_data: {e}")
+            return
+
+        if not data:
+            print("No data found, inserting dummy row to show headings...")
+            self.tree.insert("", tk.END, values=("N/A", "N/A", "N/A", "N/A", "N/A", "N/A"), tags=("oddrow",))
+        else:
+            print("Inserting data into Treeview...")
+            for index, row in enumerate(data, start=1):
+                limited_row = (str(row[0]), row[1], row[2].strftime('%Y-%m-%d') if isinstance(row[2], datetime.date) else row[2], row[4], row[5], row[19])
+                tag = "evenrow" if index % 2 == 0 else "oddrow"
+                self.tree.insert("", tk.END, values=limited_row, tags=(tag,))
+                print(f"Inserted row {index}: {limited_row}")
+
+        self.tree.update()
+        self.tree.update_idletasks()
+        self.root.update()
+        print("Treeview updated.")
+
+    def clear_search(self):
+        self.search_id_no_var.set("")
+        self.search_name_var.set("")
+        self.load_data()
+
+    def download_pdf(self):
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showerror("Error", "Please select an employee to download PDF!")
+            return
+
+        reg_no = str(self.tree.item(selected_item[0])["values"][0])
+        reg_no = reg_no.zfill(4)
+        print(f"Fetching employee with registration_no: {reg_no}")
+
+        try:
+            data = self.db.get_employee_by_reg_no(reg_no)
+            print(f"Data fetched: {data}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch employee data: {e}")
+            print(f"Error in download_pdf: {e}")
+            return
+
+        if not data:
+            messagebox.showerror("Error", "Employee data not found!")
+            return
+
+        employee_data = {
+            "registration_no": data[0] if data[0] else "NA",
+            "name": data[1] if data[1] else "NA",
+            "dob": data[2].strftime('%Y-%m-%d') if isinstance(data[2], datetime.date) and data[2] else "NA",
+            "id_no": data[3] if data[3] else "NA",
+            "mobile": data[4] if data[4] else "NA",
+            "gender": data[5] if data[5] else "NA",
+            "nationality": data[6] if data[6] else "NA",
+            "village": data[7] if data[7] else "NA",
+            "police_station": data[8] if data[8] else "NA",
+            "tehsil": data[9] if data[9] else "NA",
+            "district": data[10] if data[10] else "NA",
+            "pincode": data[11] if data[11] else "NA",
+            "state": data[12] if data[12] else "NA",
+            "father_name": data[13] if data[13] else "NA",
+            "mother_name": data[14] if data[14] else "NA",
+            "member1_name": data[15] if data[15] else "NA",
+            "member1_mobile": data[16] if data[16] else "NA",
+            "member2_name": data[17] if data[17] else "NA",
+            "member2_mobile": data[18] if data[18] else "NA",
+            "reference_name": data[19] if data[19] else "NA",
+            "photo_path": data[20] if data[20] else "",
+            "machine_no": data[21] if data[21] else "NA",
+            "remarks": data[22] if data[22] else "NA",
+            "id_path": data[23] if data[23] else "",
+            "id_type": data[24] if data[24] else "NA"
+        }
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialdir=os.path.expanduser("~/Desktop"),
+            initialfile=f"employee_{employee_data['registration_no']}.pdf"
+        )
+        if not file_path:
+            messagebox.showinfo("Info", "PDF download cancelled.")
+            return
+
+        try:
+            self.generate_pdf(file_path, employee_data)
+            messagebox.showinfo("Success", f"PDF downloaded successfully at: {file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate PDF: {e}")
+            print(f"PDF Generation Error: {e}")
+
+    def fix_orientation(self, image):
+        try:
+            for orientation in ExifTags.TAGS.keys():
+                if ExifTags.TAGS[orientation] == 'Orientation':
+                    break
+            exif = image._getexif()
+            if exif is not None and orientation in exif:
+                orientation_value = exif[orientation]
+                if orientation_value == 3:
+                    image = image.rotate(180, expand=True)
+                elif orientation_value == 6:
+                    image = image.rotate(270, expand=True)
+                elif orientation_value == 8:
+                    image = image.rotate(90, expand=True)
+        except (AttributeError, KeyError, IndexError, TypeError):
+            pass
+        return image
+
+    def generate_pdf(self, file_path, data):
+        try:
+            c = canvas.Canvas(file_path, pagesize=A4)
+            width, height = A4
+            margin = 0.25 * inch
+            padding = 0.3 * inch
+            line_spacing = 0.25 * inch
+
+            # Draw black line box
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(1)
+            c.rect(margin, margin, width - 2 * margin, height - 2 * margin, fill=0)
+
+            # Title with new style (dark blue box with white text)
+            y_position = height - margin - 0.5 * inch
+            dark_blue = colors.Color(0.13, 0.31, 0.47)  # RGB for a dark blue (approx. #215179)
+            c.setFillColor(dark_blue)
+            title_width = c.stringWidth("EMPLOYEE DETAILS", "Times-Bold", 18)
+            c.rect((width - title_width - 0.2 * inch) / 2, y_position - 0.1 * inch, title_width + 0.2 * inch, 0.5 * inch, fill=1, stroke=0)
+            c.setFillColor(colors.white)
+            c.setFont("Times-Bold", 18)
+            c.drawCentredString(width / 2, y_position, "EMPLOYEE DETAILS")
+            y_position -= 0.7 * inch  # Increased spacing after title
+
+            # Photo Section (Right side)
+            photo_x = width - 2.0 * inch - margin - padding
+            photo_width = 1.8 * inch
+            employee_photo_height = 1.8 * inch
+            id_photo_height = 2.4 * inch
+
+            # Employee Photo
+            photo_y = y_position - 0.5 * inch
+            c.rect(photo_x, photo_y - employee_photo_height, photo_width, employee_photo_height)
+            photo_path = data.get("photo_path", "")
+            if photo_path and os.path.exists(photo_path):
+                try:
+                    img = Image.open(photo_path)
+                    img = self.fix_orientation(img)
+                    img = img.resize((400, 400), Image.Resampling.LANCZOS)
+                    temp_dir = tempfile.gettempdir()
+                    temp_photo = os.path.join(temp_dir, f"temp_employee_{os.getpid()}.png")
+                    img.save(temp_photo)
+                    c.drawImage(temp_photo, photo_x, photo_y - employee_photo_height, photo_width, employee_photo_height)
+                    os.remove(temp_photo)
+                except Exception as e:
+                    print(f"Error loading employee photo: {e}")
+            c.setFont("Helvetica-Bold", 10)
+            c.setFillColor(colors.black)
+            c.drawCentredString(photo_x + photo_width / 2, photo_y - employee_photo_height - 0.2 * inch, "Person Photo")
+
+            # ID Photo
+            id_y = photo_y - employee_photo_height - 0.7 * inch
+            c.rect(photo_x, id_y - id_photo_height, photo_width, id_photo_height)
+            id_path = data.get("id_path", "")
+            if id_path and os.path.exists(id_path):
+                try:
+                    id_img = Image.open(id_path)
+                    id_img = self.fix_orientation(id_img)
+                    id_img = id_img.resize((400, 600), Image.Resampling.LANCZOS)
+                    temp_dir = tempfile.gettempdir()
+                    temp_id = os.path.join(temp_dir, f"temp_id_{os.getpid()}.png")
+                    id_img.save(temp_id)
+                    c.drawImage(temp_id, photo_x, id_y - id_photo_height, photo_width, id_photo_height)
+                    os.remove(temp_id)
+                except Exception as e:
+                    print(f"Error loading ID photo: {e}")
+            c.setFont("Helvetica-Bold", 10)
+            c.setFillColor(colors.black)
+            c.drawCentredString(photo_x + photo_width / 2, id_y - id_photo_height - 0.2 * inch, "ID Photo")
+
+            # Content area (left side)
+            content_x = margin + padding
+            label_width = 1.5 * inch
+            y_position -= 0.2 * inch
+
+            # Personal Info
+            c.setFillColor(colors.lightgrey)  # Background fill
+            c.rect(content_x, y_position - 0.1 * inch, 3.5 * inch, 0.5 * inch, fill=1, stroke=0)
+            c.setFont("Times-Bold", 16)  # Updated font and size
+            c.setFillColor(colors.darkblue)
+            c.drawString(content_x + 0.1 * inch, y_position, "Personal Information")
+            y_position -= line_spacing + 0.1 * inch  # Extra spacing
+            c.setStrokeColor(colors.darkblue)
+            c.setLineWidth(2)
+            c.line(content_x, y_position, content_x + 3.5 * inch, y_position)
+            y_position -= line_spacing
+
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColor(colors.black)
+            personal_info = [
+                ("Registration No:", data["registration_no"]),
+                ("Name:", data["name"]),
+                ("DOB:", data["dob"]),
+                ("ID No:", data["id_no"]),
+                ("ID Type:", data["id_type"]),
+                ("Mobile:", data["mobile"]),
+                ("Gender:", data["gender"]),
+                ("Nationality:", data["nationality"]),
+            ]
+            for label, value in personal_info:
+                c.drawString(content_x, y_position, label)
+                c.setFont("Helvetica", 11)
+                c.setFillColor(colors.black)
+                c.drawString(content_x + label_width, y_position, str(value))
+                c.setFont("Helvetica-Bold", 11)
+                c.setFillColor(colors.black)
+                y_position -= line_spacing
+            y_position -= 0.2 * inch  # Increased spacing between sections
+
+            # Contact Details
+            c.setFillColor(colors.lightgrey)
+            c.rect(content_x, y_position - 0.1 * inch, 3.5 * inch, 0.5 * inch, fill=1, stroke=0)
+            c.setFont("Times-Bold", 16)
+            c.setFillColor(colors.darkblue)
+            c.drawString(content_x + 0.1 * inch, y_position, "Contact Details")
+            y_position -= line_spacing + 0.1 * inch
+            c.setStrokeColor(colors.darkblue)
+            c.setLineWidth(2)
+            c.line(content_x, y_position, content_x + 3.5 * inch, y_position)
+            y_position -= line_spacing
+
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColor(colors.black)
+            contact_details = [
+                ("Village:", data["village"]),
+                ("Police Station:", data["police_station"]),
+                ("Tehsil:", data["tehsil"]),
+                ("District:", data["district"]),
+                ("Pincode:", data["pincode"]),
+                ("State:", data["state"]),
+            ]
+            for label, value in contact_details:
+                c.drawString(content_x, y_position, label)
+                c.setFont("Helvetica", 11)
+                c.setFillColor(colors.black)
+                c.drawString(content_x + label_width, y_position, str(value))
+                c.setFont("Helvetica-Bold", 11)
+                c.setFillColor(colors.black)
+                y_position -= line_spacing
+            y_position -= 0.2 * inch
+
+            # Family Members
+            c.setFillColor(colors.lightgrey)
+            c.rect(content_x, y_position - 0.1 * inch, 3.5 * inch, 0.5 * inch, fill=1, stroke=0)
+            c.setFont("Times-Bold", 16)
+            c.setFillColor(colors.darkblue)
+            c.drawString(content_x + 0.1 * inch, y_position, "Family Members")
+            y_position -= line_spacing + 0.1 * inch
+            c.setStrokeColor(colors.darkblue)
+            c.setLineWidth(2)
+            c.line(content_x, y_position, content_x + 3.5 * inch, y_position)
+            y_position -= line_spacing
+
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColor(colors.black)
+            family_members = [
+                ("Father's Name:", data["father_name"]),
+                ("Mother's Name:", data["mother_name"]),
+                ("Member 1 Name:", data["member1_name"]),
+                ("Member 1 Mobile:", data["member1_mobile"]),
+                ("Member 2 Name:", data["member2_name"]),
+                ("Member 2 Mobile:", data["member2_mobile"]),
+            ]
+            for label, value in family_members:
+                c.drawString(content_x, y_position, label)
+                c.setFont("Helvetica", 11)
+                c.setFillColor(colors.black)
+                c.drawString(content_x + label_width, y_position, str(value))
+                c.setFont("Helvetica-Bold", 11)
+                c.setFillColor(colors.black)
+                y_position -= line_spacing
+            y_position -= 0.2 * inch
+
+            # Additional Info
+            c.setFillColor(colors.lightgrey)
+            c.rect(content_x, y_position - 0.1 * inch, 3.5 * inch, 0.5 * inch, fill=1, stroke=0)
+            c.setFont("Times-Bold", 16)
+            c.setFillColor(colors.darkblue)
+            c.drawString(content_x + 0.1 * inch, y_position, "Additional Information")
+            y_position -= line_spacing + 0.1 * inch
+            c.setStrokeColor(colors.darkblue)
+            c.setLineWidth(2)
+            c.line(content_x, y_position, content_x + 3.5 * inch, y_position)
+            y_position -= line_spacing
+
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColor(colors.black)
+            additional_info = [
+                ("Reference Name:", data["reference_name"]),
+                ("Machine No:", data["machine_no"]),
+                ("Remarks:", data["remarks"]),
+            ]
+            for label, value in additional_info:
+                c.drawString(content_x, y_position, label)
+                c.setFont("Helvetica", 11)
+                c.setFillColor(colors.black)
+                c.drawString(content_x + label_width, y_position, str(value))
+                c.setFont("Helvetica-Bold", 11)
+                c.setFillColor(colors.black)
+                y_position -= line_spacing
+
+            # Footer
+            c.setFont("Helvetica", 8)
+            c.setFillColor(colors.grey)
+            c.drawCentredString(width / 2, margin + 0.2 * inch, f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d')}")
+
+            # Check if content fits
+            if y_position < margin + padding:
+                print("DEBUG: Content exceeds page, consider reducing spacing or moving to next page.")
+
+            c.showPage()
+            c.save()
+            print("DEBUG: PDF generated successfully.")
+        except Exception as e:
+            print(f"DEBUG: Error in PDF generation: {e}")
+            raise Exception(f"Error in PDF generation: {e}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = EmployeeDatabase(root)
+    root.mainloop()
