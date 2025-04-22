@@ -1,0 +1,321 @@
+import psycopg2
+from database.db_config import DB_CONFIG
+
+class DatabaseOperations:
+    def __init__(self):
+        self.conn = None
+        self.connect()
+
+    def connect(self):
+        """Establish database connection with retry logic."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self.conn = psycopg2.connect(**DB_CONFIG)
+                return
+            except psycopg2.Error as e:
+                if attempt == max_retries - 1:
+                    raise Exception(f"Failed to connect to database after {max_retries} attempts: {e}")
+                print(f"Connection attempt {attempt + 1} failed: {e}. Retrying...")
+
+    def get_last_registration_number(self):
+        with self.conn.cursor() as cursor:
+            try:
+                cursor.execute("SELECT registration_no FROM employees ORDER BY id DESC LIMIT 1")
+                result = cursor.fetchone()
+                return result[0] if result else None
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def check_duplicate(self, field, value):
+        if not value:
+            return False
+        with self.conn.cursor() as cursor:
+            try:
+                query = f"SELECT 1 FROM employees WHERE {field} = %s"
+                cursor.execute(query, (value,))
+                result = cursor.fetchone()
+                return result is not None
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def employee_exists(self, id_no, mobile):
+        return self.check_duplicate("id_no", id_no) or self.check_duplicate("mobile", mobile)
+
+    def insert_employee(self, registration_no, date, name, dob, id_type, id_no, mobile, gender, nationality, village, police_station, tehsil, district, pincode, state, father_name, mother_name, member1_name, member1_mobile, member2_name, member2_mobile, reference_name, machine_no, remarks, photo_path, id_path):
+        if not registration_no:
+            raise ValueError("Registration number is required!")
+        if not name:
+            raise ValueError("Name is required!")
+        if not dob:
+            dob = "1900-01-01"
+
+        if self.check_duplicate("registration_no", registration_no):
+            raise ValueError(f"Registration number {registration_no} already exists!")
+        if self.check_duplicate("id_no", id_no):
+            raise ValueError(f"ID number {id_no} already exists!")
+        # if self.check_duplicate("mobile", mobile):
+        #     raise ValueError(f"Mobile number {mobile} already exists!")
+
+        with self.conn.cursor() as cursor:
+            query = """
+            INSERT INTO employees (registration_no, date, name, dob, id_type, id_no, mobile, gender, nationality, village, police_station, tehsil, district, pincode, state, father_name, mother_name, member1_name, member1_mobile, member2_name, member2_mobile, reference_name, machine_no, remarks, photo_path, id_path)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            data = (
+                registration_no,
+                date,
+                name,
+                dob,
+                id_type,
+                id_no,
+                mobile,
+                gender,
+                nationality,
+                village,
+                police_station,
+                tehsil,
+                district,
+                pincode,
+                state,
+                father_name,
+                mother_name,
+                member1_name,
+                member1_mobile,
+                member2_name,
+                member2_mobile,
+                reference_name,
+                machine_no,
+                remarks,
+                photo_path,
+                id_path
+            )
+            try:
+                cursor.execute(query, data)
+                self.conn.commit()
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def check_registration_no_exists(self, registration_no):
+        with self.conn.cursor() as cursor:
+            try:
+                cursor.execute("SELECT 1 FROM employees WHERE registration_no = %s", (registration_no,))
+                result = cursor.fetchone()
+                return result is not None
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def insert_employee_leave(self, registration_no, leave_date, reason):
+        if not registration_no:
+            raise ValueError("Registration number is required!")
+        if not leave_date:
+            raise ValueError("Leave date is required!")
+        if not reason:
+            raise ValueError("Reason is required!")
+        if not self.check_registration_no_exists(registration_no):
+            raise ValueError(f"Employee with registration number {registration_no} does not exist!")
+
+        with self.conn.cursor() as cursor:
+            query = """
+            INSERT INTO employee_leaves (registration_no, leave_date, reason)
+            VALUES (%s, %s, %s)
+            """
+            data = (registration_no, leave_date, reason)
+            try:
+                cursor.execute(query, data)
+                self.conn.commit()
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def insert_employee_rejoin(self, registration_no, rejoin_date):
+        if not registration_no:
+            raise ValueError("Registration number is required!")
+        if not rejoin_date:
+            raise ValueError("Rejoin date is required!")
+        if not self.check_registration_no_exists(registration_no):
+            raise ValueError(f"Employee with registration number {registration_no} does not exist!")
+
+        with self.conn.cursor() as cursor:
+            query = """
+            INSERT INTO employee_rejoins (registration_no, rejoin_date)
+            VALUES (%s, %s)
+            """
+            data = (registration_no, rejoin_date)
+            try:
+                cursor.execute(query, data)
+                self.conn.commit()
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_leave_and_rejoin_details(self):
+        with self.conn.cursor() as cursor:
+            try:
+                cursor.execute("""
+                    SELECT 
+                        el.id, 
+                        el.registration_no, 
+                        el.leave_date, 
+                        el.reason, 
+                        'Leave' as type,
+                        e.name
+                    FROM employee_leaves el
+                    LEFT JOIN employees e ON el.registration_no = e.registration_no
+                    UNION ALL
+                    SELECT 
+                        er.id, 
+                        er.registration_no, 
+                        er.rejoin_date as date, 
+                        NULL as reason, 
+                        'Rejoin' as type,
+                        e.name
+                    FROM employee_rejoins er
+                    LEFT JOIN employees e ON er.registration_no = e.registration_no
+                    ORDER BY id
+                """)
+                combined_data = cursor.fetchall()
+                return combined_data
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_leave_rejoin_by_date(self, date):
+        with self.conn.cursor() as cursor:
+            try:
+                cursor.execute("""
+                    SELECT 
+                        el.id, 
+                        el.registration_no, 
+                        el.leave_date, 
+                        el.reason, 
+                        'Leave' as type,
+                        e.name
+                    FROM employee_leaves el
+                    LEFT JOIN employees e ON el.registration_no = e.registration_no
+                    WHERE el.leave_date = %s
+                    UNION ALL
+                    SELECT 
+                        er.id, 
+                        er.registration_no, 
+                        er.rejoin_date as date, 
+                        NULL as reason, 
+                        'Rejoin' as type,
+                        e.name
+                    FROM employee_rejoins er
+                    LEFT JOIN employees e ON er.registration_no = e.registration_no
+                    WHERE er.rejoin_date = %s
+                    ORDER BY id
+                """, (date, date))
+                combined_data = cursor.fetchall()
+                return combined_data
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def delete_leave_rejoin_record(self, registration_no, date):
+        with self.conn.cursor() as cursor:
+            try:
+                cursor.execute(
+                    "DELETE FROM employee_leaves WHERE registration_no = %s AND leave_date = %s",
+                    (registration_no, date)
+                )
+                cursor.execute(
+                    "DELETE FROM employee_rejoins WHERE registration_no = %s AND rejoin_date = %s",
+                    (registration_no, date)
+                )
+                self.conn.commit()
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_employee_details_by_id_no(self, id_no):
+        with self.conn.cursor() as cursor:
+            query = """
+            SELECT name, machine_no
+            FROM employees
+            WHERE id_no = %s
+            """
+            try:
+                cursor.execute(query, (id_no,))
+                result = cursor.fetchone()
+                return result  # Returns (name, machine_no) or None if not found
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_employee_by_reg_no(self, registration_no):
+        with self.conn.cursor() as cursor:
+            query = """
+            SELECT registration_no, name, dob, id_no, mobile, gender, nationality, village, police_station, tehsil, district, pincode, state, father_name, mother_name, member1_name, member1_mobile, member2_name, member2_mobile, reference_name, photo_path, machine_no, remarks, id_path, id_type
+            FROM employees
+            WHERE registration_no = %s
+            """
+            try:
+                cursor.execute(query, (registration_no,))
+                result = cursor.fetchone()
+                return result
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_employee_details_by_reg_no(self, registration_no):
+        with self.conn.cursor() as cursor:
+            query = """
+            SELECT name, machine_no
+            FROM employees
+            WHERE registration_no = %s
+            """
+            try:
+                cursor.execute(query, (registration_no,))
+                result = cursor.fetchone()
+                return result  # Returns (name, machine_no) or None if not found
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def get_all_employees(self, search_id_no="", search_name=""):
+        with self.conn.cursor() as cursor:
+            query = """
+            SELECT registration_no, name, dob, id_no, mobile, gender, nationality, village, police_station, tehsil, district, pincode, state, father_name, mother_name, member1_name, member1_mobile, member2_name, member2_mobile, reference_name, photo_path, machine_no, remarks, id_path, id_type
+            FROM employees
+            WHERE 1=1
+            """
+            params = []
+
+            if search_id_no:
+                query += " AND id_no = %s"
+                params.append(search_id_no)
+            else:
+                query += " AND (id_no IS NOT NULL OR id_no = '')"  # Allow NULL or empty
+
+            if search_name:
+                query += " AND name ILIKE %s"
+                params.append(f"%{search_name}%")
+            else:
+                query += " AND (name IS NOT NULL OR name = '')"  # Allow NULL or empty
+
+            query += " ORDER BY registration_no"
+
+            try:
+                cursor.execute(query, params)
+                result = cursor.fetchall()
+                return result
+            except psycopg2.Error as e:
+                self.conn.rollback()
+                raise Exception(f"Database error: {e}")
+
+    def __del__(self):
+        if self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                print(f"Error closing database connection: {e}")
+
+if __name__ == "__main__":
+    db = DatabaseOperations()
+    print(db.get_last_registration_number())  # Test the connection and method
